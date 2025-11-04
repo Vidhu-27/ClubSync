@@ -3,6 +3,9 @@ import { connectToDatabase, resetMockDatabase } from '@/lib/database'
 
 export async function POST(_request: NextRequest) {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ message: 'Not found' }, { status: 404 })
+    }
     const { client, db } = await connectToDatabase()
 
     // If no real client, we are in mock mode. Reset mock and exit.

@@ -15,11 +15,15 @@
    JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
    NEXTAUTH_URL=http://localhost:3000
    NEXTAUTH_SECRET=your-nextauth-secret-change-this-in-production
+   # For development only: set to true to allow in-memory mock DB when Mongo is down
+   # In production (or for third-party deployments), omit or set to false
+   ALLOW_DB_MOCK=false
    ```
 
 3. **Start MongoDB**
    - Install MongoDB locally or use MongoDB Atlas
    - Ensure MongoDB is running on localhost:27017
+   - For production, verify your deployment can reach the MongoDB host and credentials are correct
 
 4. **Run Development Server**
    ```bash
@@ -149,6 +153,12 @@ The application is ready for deployment on:
 - **DigitalOcean**
 
 Make sure to set environment variables in your deployment platform.
+
+### Production hardening (no mock DB)
+
+- Ensure `ALLOW_DB_MOCK` is unset or set to `false`.
+- Ensure `MONGODB_URI` and `MONGODB_DB` are set and reachable. If the database is not reachable, API routes will return 5xx instead of silently using a mock.
+- Optional: check `GET /api/dev/db-status` to confirm `mode: "mongo"` and `ping: "ok"`.
 
 
 

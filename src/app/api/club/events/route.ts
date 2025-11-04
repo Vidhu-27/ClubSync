@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/database'
 import jwt from 'jsonwebtoken'
+import { ObjectId } from 'mongodb'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
 
@@ -35,21 +36,24 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString()
     }
 
-    // Push into the club's events array
-    const result = await db.collection('clubs').updateOne(
-      { _id: decoded.clubId },
-      { $push: { events: newEvent } }
-    )
-
-    if (!result || (result as any).matchedCount === 0) {
-      // Try with id
+    // Push into the club's events array (prefer ObjectId when valid)
+    let matched = 0
+    if (typeof decoded.clubId === 'string' && ObjectId.isValid(decoded.clubId)) {
+      const res = await db.collection('clubs').updateOne(
+        { _id: new ObjectId(decoded.clubId) },
+        { $push: { events: newEvent } }
+      )
+      matched = (res as any)?.matchedCount || 0
+    }
+    if (matched === 0) {
       const fallback = await db.collection('clubs').updateOne(
         { id: decoded.clubId },
         { $push: { events: newEvent } }
       )
-      if (!fallback || (fallback as any).matchedCount === 0) {
-        return NextResponse.json({ message: 'Club not found' }, { status: 404 })
-      }
+      matched = (fallback as any)?.matchedCount || 0
+    }
+    if (matched === 0) {
+      return NextResponse.json({ message: 'Club not found' }, { status: 404 })
     }
 
     return NextResponse.json({ success: true, event: newEvent })

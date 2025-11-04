@@ -18,6 +18,7 @@ This README intentionally avoids any sensitive details (no real emails, password
 - Calendars: FullCalendar v6, React Big Calendar + date-fns
 - Auth: JWT (manual, with bcrypt password hashing)
 - Data: MongoDB (primary) with an in‑memory mock fallback for development
+ - Data: MongoDB (primary). In-memory mock is available only in development when `ALLOW_DB_MOCK=true`.
 - Icons: lucide-react
 
 ## Prerequisites
@@ -72,7 +73,8 @@ npm run reset
 ## Configuration and data
 
 - The app connects to MongoDB using `MONGODB_URI` and `MONGODB_DB`.
-- If MongoDB is not available, a mock in‑memory database is used for development. Use the reset script or the dev reset API to return to a clean state.
+- In production (or when `ALLOW_DB_MOCK` is not `true`), the app will NOT fall back to a mock DB; API routes will error if the database is unreachable.
+- In development, you may opt into a mock DB by setting `ALLOW_DB_MOCK=true`. Use the reset script or the dev reset API to return to a clean state.
 - File uploads (club reports) are stored under `public/uploads/<clubId>` and served statically in development. For production, replace this with durable object storage.
 
 ## Security notes

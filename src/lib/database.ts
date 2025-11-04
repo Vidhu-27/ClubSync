@@ -3,9 +3,11 @@ import { Club, User, BudgetRequest } from '@/types/mongodb'
 
 let cachedClient: MongoClient | null = null
 let cachedDb: Db | null = null
+let usingMock = false
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017'
 const MONGODB_DB = process.env.MONGODB_DB || 'clubsync'
+const ALLOW_DB_MOCK = String(process.env.ALLOW_DB_MOCK || '').toLowerCase() === 'true'
 
 export async function connectToDatabase() {
   if (cachedClient && cachedDb) {
@@ -23,13 +25,21 @@ export async function connectToDatabase() {
     
     cachedClient = client
     cachedDb = db
+    usingMock = false
     
     return { client, db }
   } catch (error) {
     console.error('Database connection error:', error)
-    console.warn('Using mock database for development')
-    // Return a mock database object for development
-    return createMockDatabase()
+    // In production or when mock is not explicitly allowed, do not fall back
+    const inProduction = process.env.NODE_ENV === 'production'
+    if (inProduction || !ALLOW_DB_MOCK) {
+      // Surface the error to callers; route handlers should catch and respond 5xx
+      throw error
+    }
+    console.warn('Using mock database for development (ALLOW_DB_MOCK=true)')
+    const mock = createMockDatabase()
+    usingMock = true
+    return mock
   }
 }
 
@@ -175,5 +185,9 @@ export async function closeDatabaseConnection() {
     cachedClient = null
     cachedDb = null
   }
+}
+
+export function isUsingMockDb() {
+  return usingMock
 }
 

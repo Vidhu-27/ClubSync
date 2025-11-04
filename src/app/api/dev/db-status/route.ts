@@ -16,10 +16,11 @@ export async function GET(_req: NextRequest) {
     let ping: 'ok' | 'skipped' | 'failed' = 'skipped'
     if (!usingMock) {
       try {
-        // mongodb driver Db has command; mock does not
-        // @ts-ignore
-        const res = await (db as any).command?.({ ping: 1 })
-        if (res?.ok === 1) ping = 'ok'
+        const anyDb = db as any
+        if (typeof anyDb?.command === 'function') {
+          const res = await anyDb.command({ ping: 1 })
+          if (res?.ok === 1) ping = 'ok'
+        }
       } catch {
         ping = 'failed'
       }

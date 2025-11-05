@@ -1,20 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/database'
 import jwt from 'jsonwebtoken'
-import { promises as fs } from 'fs'
-import path from 'path'
 import { ObjectId } from 'mongodb'
+import { put, del } from '@vercel/blob'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
-
-// Helper to ensure directory exists
-async function ensureDir(dir: string) {
-  try {
-    await fs.mkdir(dir, { recursive: true })
-  } catch (_) {
-    // ignore
-  }
-}
 
 // Sanitize file names to avoid path traversal and spaces
 function sanitizeFileName(name: string) {
@@ -27,8 +17,8 @@ export async function GET(request: NextRequest) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
     }
-    const token = authHeader.substring(7)
-    const decoded = jwt.verify(token, JWT_SECRET) as any
+  const authToken = authHeader.substring(7)
+  const decoded = jwt.verify(authToken, JWT_SECRET) as any
     if (decoded.role !== 'club') {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 })
     }
@@ -85,7 +75,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 })
     }
 
-  const form = await request.formData()
+    const form = await request.formData()
     const file = form.get('file') as File | null
     const title = String(form.get('title') || '')
 
@@ -104,7 +94,7 @@ export async function POST(request: NextRequest) {
     const tokenClubId = decoded.clubId
 
     // Resolve canonical club id from DB (ObjectId or string or email)
-    const { db } = await connectToDatabase()
+  const { db } = await connectToDatabase()
     let clubDoc: any = null
     if (typeof tokenClubId === 'string' && ObjectId.isValid(tokenClubId)) {
       try { clubDoc = await db.collection('clubs').findOne({ _id: new ObjectId(tokenClubId) }) } catch {}
@@ -115,27 +105,39 @@ export async function POST(request: NextRequest) {
     if (!clubDoc && decoded.email) {
       clubDoc = await db.collection('clubs').findOne({ email: String(decoded.email).toLowerCase() })
     }
-    const canonicalId = clubDoc?._id?.toString?.() ?? String(tokenClubId)
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const originalName = sanitizeFileName((file as any).name || 'report')
-    const timeSuffix = Date.now()
-    const ext = path.extname(originalName) || '.bin'
-    const base = path.basename(originalName, ext)
-    const filename = `${base}-${timeSuffix}${ext}`
+  const canonicalId = clubDoc?._id?.toString?.() ?? String(tokenClubId)
+  const originalName = sanitizeFileName((file as any).name || 'report')
+    const parts = originalName.split('.')
+    const ext = parts.length > 1 ? `.${parts.pop()}` : ''
+    const base = parts.join('.') || 'report'
+    const filename = `${base}-${Date.now()}${ext || '.bin'}`
 
-  const uploadDir = path.join(process.cwd(), 'public', 'uploads', String(canonicalId))
-    await ensureDir(uploadDir)
-    const destPath = path.join(uploadDir, filename)
-    await fs.writeFile(destPath, buffer)
+    const blobKey = `reports/${encodeURIComponent(String(canonicalId))}/${filename}`
+    const blobTokenRaw = process.env.BLOB_READ_WRITE_TOKEN
+    const blobToken = blobTokenRaw && blobTokenRaw.startsWith('BLOB_READ_WRITE_TOKEN=')
+      ? blobTokenRaw.split('=', 2)[1].replace(/^"|"$/g, '')
+      : blobTokenRaw || undefined
 
-    const url = `/uploads/${encodeURIComponent(String(canonicalId))}/${encodeURIComponent(filename)}`
+    if (!blobToken && process.env.VERCEL !== '1') {
+      console.error('Upload blocked: BLOB_READ_WRITE_TOKEN is not set in environment for local/dev')
+      return NextResponse.json({ message: 'File storage not configured (missing BLOB token)' }, { status: 500 })
+    }
+    const putRes = await put(blobKey, file as any, {
+      access: 'public',
+      contentType: (file as any).type,
+      token: blobToken
+    } as any)
+
+    const url: string = (putRes as any).url
+    const pathname: string | undefined = (putRes as any).pathname || (putRes as any).path
+
     await db.collection('reports').insertOne({
       club_id: canonicalId,
       title: title || base,
       original_name: (file as any).name || originalName,
       mime: (file as any).type,
-      size: buffer.length,
-      filename,
+      size: (file as any).size ?? null,
+      blob_path: pathname ?? blobKey,
       url,
       uploadedAt: new Date().toISOString()
     })
@@ -195,18 +197,19 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: 'Not found' }, { status: 404 })
     }
 
-    // Delete file from disk (best-effort)
+    // Delete file from Vercel Blob (best-effort)
     try {
-      if (report.filename) {
-        const filePath = path.join(process.cwd(), 'public', 'uploads', String(report.club_id), report.filename)
-        await fs.unlink(filePath)
+      const blobToken = process.env.BLOB_READ_WRITE_TOKEN
+      const blobAuth = blobToken && blobToken.startsWith('BLOB_READ_WRITE_TOKEN=')
+        ? blobToken.split('=', 2)[1].replace(/^\"|\"$/g, '')
+        : blobToken || undefined
+      if (report.blob_path) {
+        await del(report.blob_path, { token: blobAuth } as any)
       } else if (report.url) {
-        const rel = decodeURIComponent(report.url.replace(/^\/+/, ''))
-        const filePath = path.join(process.cwd(), 'public', rel)
-        await fs.unlink(filePath)
+        await del(report.url, { token: blobAuth } as any)
       }
     } catch (e) {
-      console.warn('Delete file warning:', e)
+      console.warn('Blob delete warning:', e)
     }
 
     // Delete DB record

@@ -51,9 +51,9 @@ export async function GET(request: NextRequest) {
 
     // Get budget stats for this club
     type BudgetReq = { status: string; final_budget?: number; expected_budget?: number }
-    const budgetRequests = await db.collection('budget_requests').find({ 
-      club_id: clubIdRaw 
-    }).toArray() as BudgetReq[]
+    const budgetRequests = await db.collection('budget_requests').find({
+      club_id: clubIdRaw
+    } as any).toArray() as unknown as BudgetReq[]
 
     const budgetStats = {
       approved_count: budgetRequests.filter((req: BudgetReq) => req.status === 'approved').length,
@@ -108,5 +108,3 @@ export async function GET(request: NextRequest) {
     )
   }
 }
-
-

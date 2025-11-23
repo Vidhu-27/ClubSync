@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { connectToDatabase, resetMockDatabase } from '@/lib/database'
+import { connectToDatabase } from '@/lib/database'
+import { resetMockDatabase } from '@/lib/mock-db'
 
 export async function POST(_request: NextRequest) {
   try {

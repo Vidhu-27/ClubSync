@@ -41,14 +41,14 @@ export async function POST(request: NextRequest) {
     if (typeof decoded.clubId === 'string' && ObjectId.isValid(decoded.clubId)) {
       const res = await db.collection('clubs').updateOne(
         { _id: new ObjectId(decoded.clubId) },
-        { $push: { events: newEvent } }
+        { $push: { events: newEvent } } as any
       )
       matched = (res as any)?.matchedCount || 0
     }
     if (matched === 0) {
       const fallback = await db.collection('clubs').updateOne(
         { id: decoded.clubId },
-        { $push: { events: newEvent } }
+        { $push: { events: newEvent } } as any
       )
       matched = (fallback as any)?.matchedCount || 0
     }
